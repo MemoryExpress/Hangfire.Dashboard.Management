@@ -79,14 +79,13 @@
                                 $this.button('loading');
                             }, 100);
 
-                            $.post($this.data('url'), send, function () {
-                                clearTimeout(loadingDelay);
-                                $this.removeProp('disabled');
-                                $this.button('reset');
+                            $.post($this.data('url'), send, function() {
                                 window.location.reload();
                             }).fail(function (xhr, status, error) {
                                 var errorMsg = xhr.getResponseHeader("errorMsg");
                                 Hangfire.Management.alert(id, errorMsg || "There was an error. " + error);
+                            }).always(function() {
+                                clearTimeout(loadingDelay);
                                 $this.removeProp('disabled');
                                 $this.button('reset');
                             });
