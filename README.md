@@ -2,7 +2,7 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/ofdcnfyh5k7vcvsy?svg=true)](https://ci.appveyor.com/project/mccj/hangfire-dashboard-management)
 [![MyGet](https://img.shields.io/myget/mccj/vpre/Hangfire.Dashboard.Management.svg)](https://myget.org/feed/mccj/package/nuget/Hangfire.Dashboard.Management)
-[![NuGet](https://img.shields.io/nuget/v/Hangfire.Dashboard.Management.svg)](https://www.nuget.org/packages/Hangfire.Dashboard.Management)
+[![NuGet](https://buildstats.info/nuget/Hangfire.Dashboard.Management?includePreReleases=false)](https://www.nuget.org/packages/Hangfire.Dashboard.Management)
 [![MIT License](https://img.shields.io/badge/license-MIT-orange.svg)](https://github.com/mccj/Hangfire.Dashboard.Management/blob/master/LICENSE)
 
 Hangfire.Dashboard.Management provides a Management page in the default dashboard. It allows for manually creating jobs.
@@ -21,6 +21,50 @@ Hangfire.Dashboard.Management provides a Management page in the default dashboar
 
 ## Setup
 
+ASP.NET Core Applications
+```c#
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddControllersWithViews();
+
+        services.AddHangfire(configuration => configuration
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UseMemoryStorage()
+            .UseManagementPages(config => {
+                return config
+                    .AddJobs(< assembly with IJob implementations >)
+                    .SetCulture(new System.Globalization.CultureInfo("en-us"))
+                    //.TranslateJson(< Custom language JSON >)
+                    ////or
+                    //.TranslateCulture(< Custom Language Object >)
+                    ////or
+                    //.TranslateStream(< Custom language Stream >);
+                    ;
+            })
+        );
+
+        // Add the processing server as IHostedService
+        services.AddHangfireServer();
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        app.UseHangfireDashboard();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}");
+        });
+    }
+}
+```
+
+ASP.NET Applications
 ```c#
 GlobalConfiguration.Configuration
     .UseManagementPages(config => {

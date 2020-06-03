@@ -68,7 +68,7 @@ namespace Hangfire.Dashboard.Management
             #endregion 翻译
             //Cron最近5次运行时间
             //cron?cron=0+0+0+*+*+%3F+
-            DashboardRoutes.Routes.Add("/cron", new CommandDispatcher(context =>
+            DashboardRoutes.Routes.Add("/cron", new CommandDispatcher(async context =>
             {
                 var cron = context.Request.GetQuery("cron");
                 //var result = CronExpressionDescriptor.ExpressionDescriptor.GetDescription(cron, new Options
@@ -80,14 +80,16 @@ namespace Hangfire.Dashboard.Management
                 //});
                 //var cronDescription = Hangfire.Cron.GetDescription(cron);
                 var cronDescription = CronExpressionDescriptor.ExpressionDescriptor.GetDescription(cron);
-                var cronSchedule = NCrontab.CrontabSchedule.Parse(cron);
-                var example = cronSchedule.GetNextOccurrences(System.DateTime.UtcNow, System.DateTime.Now.AddYears(5)).Take(5).ToArray();
+                var cronSchedule = Cronos.CronExpression.Parse(cron);
+                var example = cronSchedule.GetOccurrences(System.DateTime.UtcNow, System.DateTime.Now.AddYears(5)).Take(5).ToArray();
+                //var cronSchedule = NCrontab.CrontabSchedule.Parse(cron);
+                //var example = cronSchedule.GetNextOccurrences(System.DateTime.UtcNow, System.DateTime.Now.AddYears(5)).Take(5).ToArray();
                 var str = Newtonsoft.Json.JsonConvert.SerializeObject(new
                 {
                     Description = cronDescription,
                     Example = example
                 });
-                context.Response.WriteAsync(str);
+                await context.Response.WriteAsync(str);
                 return true;
             }));
             var pages = options.GetPages();
@@ -101,10 +103,18 @@ namespace Hangfire.Dashboard.Management
                 var path = $"{ManagementPage.UrlRoute}/{pageInfo.Title.ToBase64Url()}";
                 ManagementSidebarMenu.Items.Add(p => new MenuItem(pageInfo.Title, path)
                 {
-                    Active = p.RequestPath.StartsWith(path)
+                    Active = p.RequestPath.StartsWith(path),
+                    Metric = new DashboardMetric(
+                        "metrics:count",
+                        "Metrics_Count",
+                        page => new Metric(pageInfo.Metadatas.Length)
+                        {
+                            //Style = pageInfo.Metadatas.Length > 0 ? MetricStyle.Info : MetricStyle.Default,
+                            //Highlighted = pageInfo.Metadatas.Length > 0
+                        })
                 });
                 ////添加页面
-                DashboardRoutes.Routes.AddRazorPage(path, x => new ManagementBasePage(pageInfo.Title, pageInfo.Title, pageInfo.Pages));
+                DashboardRoutes.Routes.AddRazorPage(path, x => new ManagementBasePage(pageInfo.Title, pageInfo.Title, pageInfo.Metadatas));
             }
             #endregion 任务
 
@@ -178,7 +188,7 @@ namespace Hangfire.Dashboard.Management
 
                     var jobtype = getFormValue("type")?.FirstOrDefault();
                     var id = getFormValue("id")?.FirstOrDefault();
-                    var jobMetadata = pages.SelectMany(f => f.Pages.SelectMany(ff => ff.Metadatas.Where(fff => fff.GetId() == id))).FirstOrDefault();
+                    var jobMetadata = pages.SelectMany(f => f.Metadatas.Where(fff => fff.GetId() == id)).FirstOrDefault();
                     var par = new List<object>();
 
                     foreach (var parameterInfo in jobMetadata.Parameters)
@@ -337,24 +347,27 @@ namespace Hangfire.Dashboard.Management
                 return false;
             });
             //替换页面
-            var type = Type.GetType("Hangfire.Dashboard.RazorPageDispatcher," + typeof(IGlobalConfiguration).Assembly.FullName);
-            if (type != null)
-            {
-                object obj = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.RecurringJobsPage()) });
-                var dispatcher = obj as IDashboardDispatcher;//new RazorPageDispatcher( )
-                Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/recurring", dispatcher);
+            if(options.OverrideDefaultHangfirePages)
+            { 
+                var type = Type.GetType("Hangfire.Dashboard.RazorPageDispatcher," + typeof(IGlobalConfiguration).Assembly.FullName);
+                if (type != null)
+                {
+                    object obj = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.RecurringJobsPage()) });
+                    var dispatcher = obj as IDashboardDispatcher;//new RazorPageDispatcher( )
+                    Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/recurring", dispatcher);
 
-                object obj2 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.JobDetailsPage(x.Groups["JobId"].Value)) });
-                var dispatcher2 = obj2 as IDashboardDispatcher;//new RazorPageDispatcher( )
-                Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/jobs/details/(?<JobId>.+)", dispatcher2);
+                    object obj2 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.JobDetailsPage(x.Groups["JobId"].Value)) });
+                    var dispatcher2 = obj2 as IDashboardDispatcher;//new RazorPageDispatcher( )
+                    Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/jobs/details/(?<JobId>.+)", dispatcher2);
 
-                object obj3 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.RetriesPage()) });
-                var dispatcher3 = obj3 as IDashboardDispatcher;//new RazorPageDispatcher( )
-                Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/retries", dispatcher3);
+                    object obj3 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.RetriesPage()) });
+                    var dispatcher3 = obj3 as IDashboardDispatcher;//new RazorPageDispatcher( )
+                    Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/retries", dispatcher3);
 
-                object obj4 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.SucceededJobs()) });
-                var dispatcher4 = obj4 as IDashboardDispatcher;//new RazorPageDispatcher( )
-                Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/jobs/succeeded", dispatcher4);
+                    object obj4 = Activator.CreateInstance(type, new object[] { new Func<System.Text.RegularExpressions.Match, RazorPage>(x => new Hangfire.Dashboard.Management.Pages.SucceededJobs()) });
+                    var dispatcher4 = obj4 as IDashboardDispatcher;//new RazorPageDispatcher( )
+                    Hangfire.Dashboard.DashboardRoutes.Routes.Replace("/jobs/succeeded", dispatcher4);
+                }
             }
         }
     }
@@ -370,16 +383,17 @@ namespace Hangfire.Dashboard.Management
         });
         private List<ManagePage> Pages { get; /*set; */} = new List<ManagePage>();
         protected internal System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentUICulture;
-        protected internal PageInfo[] GetPages()
+        protected internal ManagePage[] GetPages()
         {
-            return Pages.GroupBy(f => f.Title.IsNullOrWhiteSpace() ? string.Empty : f.Title.Trim()).Select(f => new PageInfo { Title = f.Key, Pages = f.Where(ff => ff.Metadatas.Length > 0).ToArray() }).ToArray();
+            return Pages.GroupBy(f => f.Title.IsNullOrWhiteSpace() ? string.Empty : f.Title.Trim()).Select(f => new ManagePage(f.Key, f.SelectMany(ff => ff.Metadatas).ToArray())).ToArray();
         }
-        protected internal class PageInfo
-        {
-            public string Title { get; set; }
-            public ManagePage[] Pages { get; set; }
-            //public string MenuName { get; internal set; }
-        }
+        //protected internal class PageInfo
+        //{
+        //    public string Title { get; set; }
+        //    public ManagePage[] Pages { get; set; }
+        //    //public Hangfire.Dashboard.Management.Metadata.JobMetadata[] Pages { get; set; }
+        //    //public string MenuName { get; internal set; }
+        //}
 
         /// <summary>
         /// 重新翻译方法
@@ -497,7 +511,9 @@ namespace Hangfire.Dashboard.Management
                           DescriptionText = f?.DisplayData?.DescriptionText,
                           IsMultiLine = f?.DisplayData?.IsMultiLine,
                           ConvertType = f?.DisplayData?.ConvertType,
-                          DefaultValue = f?.DisplayData?.DefaultValue//_defaultValue.Count > 0 ? _defaultValue.Dequeue() : null
+                          DefaultValue = f?.DisplayData?.DefaultValue,//_defaultValue.Count > 0 ? _defaultValue.Dequeue() : null
+                          //IsDisabled = f?.DisplayData?.IsDisabled,
+                          CssClasses = f?.DisplayData?.CssClasses,
                       }).ToArray(),
                 Description = tm.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description ?? tm.Name,
                 DisplayName = tm.GetCustomAttribute<System.ComponentModel.DisplayNameAttribute>()?.DisplayName ?? recurringJobId
@@ -522,6 +538,15 @@ namespace Hangfire.Dashboard.Management
         {
             var expression = methodCall.Body as System.Linq.Expressions.MethodCallExpression;
             return AddJobs(expression.Method, title: title, recurringJobId: recurringJobId, queue: queue);
+        }
+
+        internal bool OverrideDefaultHangfirePages { get; set; } = true;//backwards compatible
+
+        public ManagementPagesOptions UseDefaultHangfirePages(bool useDefault = true)
+        {
+            OverrideDefaultHangfirePages = !useDefault;
+
+            return this;
         }
 
         //public SqlServerStorageOptions RemoveIfExists(string recurringJobId)
